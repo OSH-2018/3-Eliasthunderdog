@@ -8,21 +8,6 @@
 #include <sys/mman.h>
 #include <inttypes.h>
 #include "sfstypes.h"
-/**
- * now let's assume that there is only a root directory.
- * 1. data structures -> done
- * 2. store management -> create file, read file, write file, remove file.(update block usage)
- * 3. dir management
- * 
- * issue:
- * 5. create new file.
- * 2. update meta-info of a file.
- * 4. read & write return the number of characters.
- * 6. remove a file.
- * 7. open function.
- * 1. refuse to create the file with the same name of an existing file.
- * 3. memset may have some problems.
- * */
 
 struct super_block {
     unsigned int numOfFile;
@@ -158,16 +143,23 @@ static int sfs_readdir(const char *path, void *buffer,
     return 0;
 }
 
-static int open() {
-    
+static int sfs_open(const char *path, struct fuse_file_info *info) {
+    return 0;
 }
 
 static void mkFileInfo(const char *filename, struct stat *thestat) {
     struct fileinfo * theFile = (struct fileinfo *)block[1];
-    strcpy(theFile[S.numOfFile++].filename, filename);
+    struct fileinfo newNode = theFile[S.numOfFile++];
+    strcpy(newNode.filename, filename);
+
+    newNode.type = FILE;
+    memcpy(newNode.st, thestat, sizeof(struct stat));
+    
+    return;
 }
 
 static int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
+    
     struct stat st;
     st.st_mode = __S_IFREG | 0644;
     st.st_uid = fuse_get_context()->uid;
@@ -175,9 +167,12 @@ static int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
     st.st_nlink = 1;
     st.st_size = 0;
 
+    mkFileInfo(path + 1, &st);
+
+    return 0;
 }
 
-static int read(char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *info) {
+static int sfs_read(char *path, char *buffer, size_t size, off_t offset, struct fuse_file_info *info) {
     //return the number of bytes it has read.
     //
     // now le's assume that it operates on the root directory.
@@ -212,7 +207,7 @@ static int read(char *path, char *buffer, size_t size, off_t offset, struct fuse
     }
 }
 
-static int write(char *path, char *src, size_t size, off_t offset, struct fuse_file_info *info) {
+static int sfs_write(char *path, char *src, size_t size, off_t offset, struct fuse_file_info *info) {
 
     // let's assume that path is root.
     struct fileinfo *s = (struct fileinfo *)block[1];

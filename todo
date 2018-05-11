@@ -1,0 +1,17 @@
+/*
+ * now let's assume that there is only a root directory.
+ * 1. data structures -> done
+ * 2. store management -> create file, read file, write file, remove file.(update block usage)
+ * 3. dir management
+ * 
+ * issue:
+ * 5. create new file.
+ * 2. update meta-info of a file.
+ * 4. read & write return the number of characters.
+ * 6. remove a file.
+ * 7. open function.
+ * 1. refuse to create the file with the same name of an existing file.
+ * 3. memset may have some problems.
+ */
+
+ path + 1 ??-> for root directory
