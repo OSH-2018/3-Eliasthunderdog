@@ -3,11 +3,12 @@
 
 #define FILE 0
 #define DIR 1
-#define SIZE 4 * 1024 * 1024 * (size_t) 1024
 #define BLOCKSIZE 8 * 1024 //every block is 8k in size.
 #define MAX_FILE_NUM 2000
 #include <inttypes.h>
 #include <sys/types.h>
+
+const size_t SIZE = 4 * 1024 * 1024 * (size_t) 1024;
 struct fileinfo {
     unsigned int type;
     char filename[32];
@@ -25,7 +26,7 @@ struct l2_block {
 
 
 struct blockBitmap {
-    int32_t map[SIZE/BLOCKSIZE/32];
+    int32_t map[4 * 1024 * 1024 * (size_t) 1024/BLOCKSIZE/32];
     int32_t fristUnused;
 };
 

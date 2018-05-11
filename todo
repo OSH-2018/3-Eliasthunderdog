@@ -15,3 +15,5 @@
  */
 
  path + 1 ??-> for root directory
+
+ memset for s may have fault.
