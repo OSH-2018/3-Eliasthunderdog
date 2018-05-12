@@ -10,9 +10,7 @@
 #include <stdio.h>
 #define MAX_FILE_NUM 2000
 
-
-const size_t BLOCKSIZE = 8 * 1024;
-const size_t SIZE = 4 * 1024 * 1024 * (size_t) 1024;
+/*----------------data structrues---------------------------*/
 struct fileinfo {
     unsigned int type;
     char filename[32];
@@ -41,12 +39,13 @@ struct super_block {
     size_t blockRemain;
     struct blockBitmap theMap;
 };
+/*--------------------global variables-----------------------*/
 
-
+const size_t BLOCKSIZE = 8 * 1024;
+const size_t SIZE = 4 * 1024 * 1024 * (size_t) 1024;
 static struct super_block S;
 static const size_t size = SIZE;
 static const unsigned int blockSize = BLOCKSIZE; // a block is 8k in size.
-//static void *block[4 * 1024 * 1024 * (size_t) 1024/BLOCKSIZE];
 static void *block[4096*128];
 
 int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
@@ -213,7 +212,6 @@ int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset) {
         }
     }
 }
-
 
 static void* sfs_init(struct fuse_conn_info *conn) {
 
@@ -415,6 +413,7 @@ static int sfs_read(const char *path, char *buffer, size_t size, off_t offset,
             }
             start = getNumBlock(offset + byteRead, &s[i], &byteOffset);
         }
+        return byteRead;
     }
 }
 
