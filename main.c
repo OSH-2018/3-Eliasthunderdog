@@ -30,7 +30,8 @@ static struct super_block S = {
 
 static const size_t size = SIZE;
 static const unsigned int blockSize = BLOCKSIZE; // a block is 8k in size.
-static void *block[4 * 1024 * 1024 * (size_t) 1024/BLOCKSIZE];
+//static void *block[4 * 1024 * 1024 * (size_t) 1024/BLOCKSIZE];
+static void *block[100];
 
 int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
     int temp = theBlockBitmap->fristUnused;
