@@ -17,3 +17,12 @@
  path + 1 ??-> for root directory
 
  memset for s may have fault.
+
+ the init has to initialize S.
+
+
+ init: allocate and initialize
+ getattr: don't know what to do..
+ readaddir: quite easy but untested yet.
+ open: still don't know what to do.
+ unlink:

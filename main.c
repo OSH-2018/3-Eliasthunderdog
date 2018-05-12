@@ -8,8 +8,31 @@
 #include <sys/mman.h>
 #include <inttypes.h>
 #include <stdio.h>
-#include "sfstypes.h"
+#define MAX_FILE_NUM 2000
 
+
+const size_t BLOCKSIZE = 8 * 1024;
+const size_t SIZE = 4 * 1024 * 1024 * (size_t) 1024;
+struct fileinfo {
+    unsigned int type;
+    char filename[32];
+    struct stat *st;
+    int32_t l0_block[32];
+};
+
+struct l1_block {
+    int32_t l0_block[8 * 1024/sizeof(int32_t)];
+};
+
+struct l2_block {
+    int32_t l1_block[8 * 1024/sizeof(int32_t)];
+};
+
+
+struct blockBitmap {
+    int32_t map[4 * 1024 * 1024 * (size_t) 1024/8 / 1024/32];
+    int32_t fristUnused;
+};
 
 
 struct super_block {
@@ -18,20 +41,13 @@ struct super_block {
     size_t blockRemain;
     struct blockBitmap theMap;
 };
-static struct super_block S = {
-    .numOfFile = 0,
-    .blockUsed = 0,
-    .blockRemain = SIZE/(long unsigned int)BLOCKSIZE - 2,
-    .theMap = {
-    .map = {0},
-    .fristUnused = 2
-    }
-};
 
+
+static struct super_block S;
 static const size_t size = SIZE;
 static const unsigned int blockSize = BLOCKSIZE; // a block is 8k in size.
 //static void *block[4 * 1024 * 1024 * (size_t) 1024/BLOCKSIZE];
-static void *block[100];
+static void *block[4096*128];
 
 int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
     int temp = theBlockBitmap->fristUnused;
@@ -53,8 +69,114 @@ int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
     return temp;
 }
 
+int32_t alloBlock(struct fileinfo *info, int32_t *theblock) {
+    
+    struct super_block *s = (struct super_block *) block[0];
+
+    int32_t st_block = info->l0_block[0];
+    int32_t cur_block = st_block;
+
+    int32_t i = 0;
+    int32_t level = 0;
+    int32_t l1_block_addr = 0;
+    int32_t l2_block_addr = 0;
+    while(1) {
+        // search in l0 block;
+        if (level == 0) {
+            cur_block = info->l0_block[++i];
+            if (i == 31 && cur_block == 0) {
+                l1_block_addr = getNextEmptyBlock(&s->theMap);
+                info->l0_block[i] = l1_block_addr;
+                int32_t new_block = getNextEmptyBlock(&s->theMap);
+                ((struct l1_block *)block[l1_block_addr])->l0_block[0] = new_block;
+                *theblock = new_block;
+                break;
+            }
+            else if (cur_block == 0) {
+                int32_t new_block = getNextEmptyBlock(&s->theMap);
+                info->l0_block[cur_block] = new_block;
+                *theblock = new_block;
+                break;
+            }
+
+            else { level++; i = 0; l1_block_addr = cur_block; }
+        }
+
+        if (level == 1) {
+            cur_block = ((struct l1_block *) block[l1_block_addr])->l0_block[i];
+            i++;
+
+            if (cur_block == 0 && i == 256) {
+                l2_block_addr = getNextEmptyBlock(&s->theMap);
+                ((struct l1_block *) block[l1_block_addr])->l0_block[255] = l2_block_addr;
+                int32_t new_l1_block = getNextEmptyBlock(&s->theMap);
+                ((struct l2_block *) block[l2_block_addr])->l1_block[0] = new_l1_block;
+                int32_t new_l0_block = getNextEmptyBlock(&s->theMap);
+                ((struct l1_block *)block[new_l1_block])->l0_block[0] = new_l0_block;
+                *theblock = new_l0_block;
+                break;
+            }
+            else if (cur_block == 0) {
+                int32_t new_l0_block = getNextEmptyBlock(&s->theMap);
+                ((struct l1_block *) block[l1_block_addr])->l0_block[i-1] = new_l0_block;
+                *theblock = new_l0_block;
+                break;
+            }
+            else {
+                level++;
+                i = 0;
+                l2_block_addr = cur_block;
+                l1_block_addr = ((struct l2_block *)block[cur_block])->l1_block[0];
+            }
+        }
+
+        if (level == 3) {
+            struct l2_block *l2 = (struct l2_block *)block[cur_block];
+            struct l1_block *l1;
+            int m = 0, n = 0;
+            int flag = 0;
+            for (m = 0; m <= 254 & flag != 1; m++)
+                for(n = 0; n <= 255 & flag != 1; n++) {
+                    l1_block_addr = l2->l1_block[m];
+                    if (l1_block_addr == 0) {flag = 1; break;}
+                    l1 = (struct l1_block *)block[l1_block_addr];
+                    cur_block = l1->l0_block[n];
+                    if (cur_block == 0) {flag = 1; break;}
+                }
+            if (l1_block_addr == 0) {
+                l2->l1_block[m] = getNextEmptyBlock(&s->theMap);
+                int t = l2->l1_block[m];
+                ((struct l1_block *)block[t])->l0_block[0] = getNextEmptyBlock(&s->theMap);
+                *theblock = ((struct l1_block *)block[t])->l0_block[0];
+                break;
+            }
+            else if(cur_block == 0) {
+                l1->l0_block[n] = getNextEmptyBlock(&s->theMap);
+                *theblock = l1->l0_block[n];
+                break;
+            }
+            else if(l2->l1_block[255] == 0) {
+                l2->l1_block[255] = getNextEmptyBlock(&s->theMap);
+                int t2 = l2->l1_block[255];
+                struct l2_block *t_l2 = (struct l2_block *)block[t2];
+                t_l2->l1_block[0] = getNextEmptyBlock(&s->theMap);
+                struct l1_block *t_l1 = (struct l1_block *)block[t_l2->l1_block[0]];
+                t_l1->l0_block[0] = getNextEmptyBlock(&s->theMap);
+                *theblock = t_l1->l0_block[0];
+                break;
+            }
+            else {
+                cur_block = l2->l1_block[255];
+            }
+        }
+    }
+}
+
 int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset) {
-    int32_t l0 = offset / BLOCKSIZE;
+
+    if(offset >= info->st->st_size) return 0;
+
+    off_t l0 = offset / BLOCKSIZE;
     if (l0 <= 30) {
         *byteOffset = offset - l0 * BLOCKSIZE;
         return info->l0_block[l0];
@@ -62,14 +184,14 @@ int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset) {
     else {
         int l1 = (offset - BLOCKSIZE * 31) / BLOCKSIZE;
         if (l1 < BLOCKSIZE / sizeof(int32_t)) {//get help in l1
-            int32_t l0_offset = offset - 31 * BLOCKSIZE;
+            off_t l0_offset = offset - 31 * BLOCKSIZE;
             *byteOffset = l0_offset - l1 * BLOCKSIZE;
             int32_t t1 = info->l0_block[31];
             int32_t t2 = ((struct l1_block *)block[t1])->l0_block[l1];
             return t2;
         } else { // time to get help from l2
             int32_t t1 = info->l0_block[31]; 
-            int32_t l2_offset = offset - BLOCKSIZE * (31 + 255);
+            off_t l2_offset = offset - BLOCKSIZE * (31 + 255);
             int32_t l2_temp = l2_offset / (255 * 256 * BLOCKSIZE);
             int temp;
             int32_t target = ((struct l1_block *)block[t1])->l0_block[255];
@@ -77,13 +199,13 @@ int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset) {
                 target = ((struct l2_block *)block[target])->l1_block[255];
             }// now the result is in block[target]
 
-            int32_t l1_offset = l2_offset - (l2_temp * 255 * 256 * BLOCKSIZE);
+            off_t l1_offset = l2_offset - (l2_temp * 255 * 256 * BLOCKSIZE);
 
-            int32_t l1_temp = l1_offset / (256 * BLOCKSIZE); // which l1_block?
+            off_t l1_temp = l1_offset / (256 * BLOCKSIZE); // which l1_block?
             int32_t l1_target = ((struct l2_block *)block[target])->l1_block[l1_temp];// locate in block[l1_target]
 
-            int32_t l0_offset = l1_offset - (l1_temp * 256 * BLOCKSIZE);
-            int32_t l0_temp = l0_offset / BLOCKSIZE;
+            off_t l0_offset = l1_offset - (l1_temp * 256 * BLOCKSIZE);
+            off_t l0_temp = l0_offset / BLOCKSIZE;
             *byteOffset = l0_offset - l0_temp * BLOCKSIZE;
             int32_t l0_target = ((struct l1_block *)block[l1_target])->l0_block[l0_temp];
 
@@ -94,29 +216,37 @@ int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset) {
 
 
 static void* sfs_init(struct fuse_conn_info *conn) {
-   
-   int blockNum = size / blockSize;
+
+   int blockSize = 8 * 1024;
+   int blockNum = 512 * 1024; // the number of blocks
+   printf("unmap!\n");
    block[1] = mmap(NULL, 4*128*1024, PROT_READ | PROT_WRITE,
     MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
    for (int i = 0; i < blockNum; i++) {
        if(i == 1){
-           memset(block[i], 0, 4*128*1024); 
+           memset(block[i], 0, 4*128*1024); // doubt
            continue;
        }
        else {
            block[i] = mmap(NULL, blockSize, PROT_READ | PROT_WRITE, 
            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-           memset(block[i], 0, BLOCKSIZE);
+           memset(block[i], 0, BLOCKSIZE); // doubt
        }
    }
 
+   //init S
+   struct super_block* S = (struct super_block*) block[0];
+   S->blockUsed = 2;
+   S->blockRemain = blockNum - 2;
+   S->theMap.fristUnused = 2;
 
-   struct fileinfo node[2000];
+   memset(S->theMap.map, -1, sizeof(S->theMap.map)); //doubt.
 
-   memset(S.theMap.map, -1, sizeof(S.theMap.map));
+   //memcpy(block[0], &S, sizeof(S));
 
-   memcpy(block[0], &S, sizeof(S));
-   memcpy(block[1], node, sizeof(node));//some problems.
+   void *m = block[0];
+    printf("%d, %d, %d, %d\n", ((struct super_block *)m)->blockUsed, ((struct super_block *)m)->blockRemain, 
+    ((struct super_block *)m)->numOfFile, ((struct super_block *)m)->theMap.map[0]);
    
    return NULL;
 }
@@ -225,12 +355,14 @@ static int sfs_unlink(const char *path) {
 }
 
 static void mkFileInfo(const char *filename, struct stat *thestat) {
-    struct fileinfo * theFile = (struct fileinfo *)block[1];
-    struct fileinfo newNode = theFile[S.numOfFile++];
-    strcpy(newNode.filename, filename);
 
-    newNode.type = FILE;
-    memcpy(newNode.st, thestat, sizeof(struct stat));
+    struct super_block *s = (struct super_block *)block[0];
+
+    struct fileinfo * theFile = (struct fileinfo *)block[1];
+    struct fileinfo * newNode = &theFile[s->numOfFile++];
+    strcpy(newNode->filename, filename);
+
+    memcpy(newNode->st, thestat, sizeof(struct stat));
     
     return;
 }
@@ -289,8 +421,8 @@ static int sfs_read(const char *path, char *buffer, size_t size, off_t offset,
 static int sfs_write(const char *path, const char *src, size_t size, off_t offset, 
                     struct fuse_file_info *info)
 {
-
     // let's assume that path is root.
+    struct super_block *S = (struct super_block *)block[0];
     struct fileinfo *s = (struct fileinfo *)block[1];
     int flag;
     int i;
@@ -300,27 +432,39 @@ static int sfs_write(const char *path, const char *src, size_t size, off_t offse
     }
 
     if (flag == 1) {
-        printf("write failed, file not found\n");//create new file?
+        printf("write failed, file not found\n");//create new file? no
         return 0;
     } else {// I've found it ! I've found it !!
         int32_t byteOffset;
         int32_t start = getNumBlock(offset, &s[i], &byteOffset);
         int64_t byteWrote = 0;
         for (int i = 0; byteWrote < size; i++) {
-            if (size < BLOCKSIZE - byteOffset) {
-                memcpy((void *)((char *)block[start] + byteOffset), 
+            if (size < 8*1024 - byteOffset) {// can write in a block.
+                if (start == 0) {//new file.
+                    alloBlock(&s[i], &start);
+                }
+                memcpy((void *)((char *)block[start] + byteOffset),
                 (void *)((char *)src + byteWrote), size);
                 byteWrote += size;
                 offset += size;
             }
-            else {
+            else { // just fill a block and go on.
+                if (start == 0) {//new file or more size.
+                    alloBlock(&s[i], &start);
+                }
                 memcpy((void *)((char *)block[start] + byteOffset), 
-                (void *)((char *)src + byteWrote), BLOCKSIZE - byteOffset);
-                byteWrote += BLOCKSIZE - byteOffset;
-                offset += BLOCKSIZE - byteOffset;
+                (void *)((char *)src + byteWrote), 8*1024 - byteOffset);
+                byteWrote += 8*1024 - byteOffset;
+                offset += 8*1024 - byteOffset;
                 start = getNumBlock(offset, &s[i], &byteOffset);
             }
         }
+
+        if (offset + size > s[i].st->st_size) {
+            s[i].st->st_size = offset + size;
+        }
+
+        return byteWrote;
     }
 }
 

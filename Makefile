@@ -1,2 +1,4 @@
 sfs : main.c
-	gcc main.c -o ssfs `pkg-config fuse --cflags --libs`
+	gcc -O -D_FILE_OFFSET_BITS=64 -o ssfs main.c `pkg-config fuse --cflags --libs`
+clean :
+	rm ssfs
