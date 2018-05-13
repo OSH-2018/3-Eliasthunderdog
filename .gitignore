@@ -1,4 +1,9 @@
 creat.c
-done/init.c
 done/readdir.c
 test/*
+umount.sh
+todo
+.gdbinit
+sfstypes.h
+done/*
+.vscode/*
