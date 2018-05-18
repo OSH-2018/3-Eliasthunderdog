@@ -1,5 +1,6 @@
 #include "types.h"
 #include <stdbool.h>
+#include <sys/mman.h>
 
 int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
 
@@ -23,6 +24,7 @@ int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
     if (i == SIZE/BLOCKSIZE){
         return 0; //indicate that all blocks are used.
     }
+    block[temp] = mmap(NULL, sizeof(struct super_block), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     return temp;
 }
 

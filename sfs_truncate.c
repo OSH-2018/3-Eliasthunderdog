@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
 
 int sfs_truncate(const char *path, off_t offset) {
     printf("call truncate, path=%s, offset=%d", path, offset);
@@ -103,6 +104,8 @@ void releaseBlock(int blockNum) {
         printf("are you crazy? release block num = %d\n", blockNum);
         return;
     }
+
+    munmap(block[blockNum], 8 * 1024);
 
     struct super_block *s = (struct super_block *)block[0];
     int temp = blockNum / 32;
