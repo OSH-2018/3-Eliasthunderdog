@@ -1,5 +1,7 @@
 #include "types.h"
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 
 int sfs_unlink(const char *path) {
     printf("call unlink, path = %s\n", path);

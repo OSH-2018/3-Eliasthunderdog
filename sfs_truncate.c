@@ -1,5 +1,8 @@
 #include "types.h"
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
+
 int sfs_truncate(const char *path, off_t offset) {
     printf("call truncate, path=%s, offset=%d", path, offset);
     struct super_block *s = (struct super_block *)block[0];

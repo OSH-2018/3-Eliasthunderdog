@@ -1,5 +1,7 @@
 #include "types.h"
 #include <stdio.h>
+#include <string.h>
+#include <fuse.h>
 
 void mkFileInfo(const char *filename, struct stat *thestat) {
 
@@ -15,7 +17,7 @@ void mkFileInfo(const char *filename, struct stat *thestat) {
 }
 
 int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
-    printf("mknod, path = %s\n, mode = %o", path, mode);
+    printf("mknod, path = %s, mode = %o", path, mode);
     struct stat st;
     st.st_mode = __S_IFREG | 0666;
     st.st_uid = fuse_get_context()->uid;

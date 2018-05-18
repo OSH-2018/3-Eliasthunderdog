@@ -1,5 +1,7 @@
 #include "types.h"
 #include <errno.h>
+#include <stdio.h>
+#include <string.h>
 int sfs_getattr(const char *path, struct stat *st) {
     
     printf("call getattr, path = %s\n", path);

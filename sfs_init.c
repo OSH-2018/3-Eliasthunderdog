@@ -1,5 +1,7 @@
 #include "types.h"
 #include <sys/mman.h>
+#include <stdio.h>
+#include <string.h>
 
 void* sfs_init(struct fuse_conn_info *conn) {
     printf("call init\n");

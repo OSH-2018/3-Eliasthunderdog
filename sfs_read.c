@@ -1,4 +1,6 @@
 #include "types.h"
+#include <stdio.h>
+#include <string.h>
 
 int sfs_read(const char *path, char *buffer, size_t size, off_t offset, 
                     struct fuse_file_info *info) {

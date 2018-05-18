@@ -1,4 +1,6 @@
 #include "types.h"
+#include <stdio.h>
+#include <string.h>
 
 int sfs_write(const char *path, const char *src, size_t size, off_t offset, 
                     struct fuse_file_info *info)
