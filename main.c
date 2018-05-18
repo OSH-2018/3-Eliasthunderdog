@@ -10,20 +10,6 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "types.h"
-/* some variables for debug.
-static bool watchpoint = false;
-static bool watchi = false;
-static bool watchwrite = false;
-static bool watchalloc = false;
-static bool watchm = false;
-static bool getLarge = false;
-static bool watchbyte = false;
-
-
-static unsigned int l0_num = 0;
-static unsigned int l1_num = 0;
-static unsigned int l2_num = 0;
-*/
 /*-----------------------functions-----------------------------------*/
 
 const size_t BLOCKSIZE = 8 * 1024;
