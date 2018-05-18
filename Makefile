@@ -1,6 +1,6 @@
 objects = main.o getNumBlock.o newAlloBlock.o sfs_getattr.o sfs_init.o sfs_mknod.o sfs_open.o sfs_read.o \
 	sfs_readdir.o sfs_truncate.o sfs_unlink.o sfs_utimens.o sfs_write.o
-FLAGS = -D_FILE_OFFSET_BITS=64 `pkg-config fuse --cflags --libs`
+FLAGS = -D_FILE_OFFSET_BITS=64 `pkg-config fuse --cflags --libs` -g
 
 sfs : $(objects)
 	cc -o sfs $(objects) $(FLAGS)

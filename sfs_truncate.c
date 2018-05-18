@@ -115,7 +115,6 @@ void releaseBlock(int blockNum) {
     
     if(blockNum < s->theMap.fristUnused)
         s->theMap.fristUnused = blockNum;
-    memset(block[blockNum], 0, BLOCKSIZE);
     return;
 }
 
