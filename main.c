@@ -13,10 +13,12 @@
 
 /*----------------data structrues---------------------------*/
 struct fileinfo {
-    unsigned int type;
     char filename[32];
     struct stat st;
     int32_t l0_block[32];
+    int32_t l2_addr;
+    int32_t l1_offset;
+    int32_t l0_offset;
 };
 
 struct l1_block {
@@ -27,12 +29,16 @@ struct l2_block {
     int32_t l1_block[8 * 1024/sizeof(int32_t)];
 };
 
-
 struct blockBitmap {
     int32_t map[4 * 1024 * 1024 * (size_t) 1024/8 / 1024/32];
     int32_t fristUnused;
 };
 
+struct position {
+    int32_t l2;
+    int32_t l1;
+    int32_t l0;
+};
 
 struct super_block {
     int numOfFile;
@@ -55,6 +61,7 @@ static bool watchwrite = false;
 static bool watchalloc = false;
 static bool watchm = false;
 static bool getLarge = false;
+static bool watchbyte = false;
 
 
 static unsigned int l0_num = 0;
@@ -69,14 +76,13 @@ int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
     if(theBlockBitmap->fristUnused = 0) watchi = true;
     int intoffset = temp / 32;
     int bitOffset = temp - 32 * intoffset;
-    theBlockBitmap->map[intoffset] &= ~(1 << (32 - bitOffset)); // set the bit to zero. 
+    theBlockBitmap->map[intoffset] &= ~(1 << (31 - bitOffset)); // set the bit to zero. 
     int i;
     for (i = temp + 1; i < SIZE/BLOCKSIZE; i++) {
-        if(i == 33) watchi = true;
         intoffset = i / 32;
         bitOffset = i - 32 * intoffset;
         
-        bool m = ((unsigned int)(theBlockBitmap->map[intoffset] & (unsigned int) (1 << (32 - bitOffset))) != 0);
+        bool m = ((unsigned int)(theBlockBitmap->map[intoffset] & (unsigned int) (1 << (31 - bitOffset))) != 0);
         
         if (m) {
             theBlockBitmap->fristUnused = i;
@@ -89,222 +95,316 @@ int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
         watchi = true;
         return 0; //indicate that all blocks are used.
     }
-    if(temp > 546) getLarge = true;
     return temp;
 }
 
-int32_t alloBlock(struct fileinfo *info, int32_t *theblock) {
-    
-    struct super_block *s = (struct super_block *) block[0];
+int32_t newAlloBlock(struct fileinfo *info, int32_t *the_block) {
 
-    int32_t st_block = info->l0_block[0];
-    int32_t cur_block = st_block;
-
-    if (st_block == 0) {//new file?
-        info->l0_block[0] = getNextEmptyBlock(&s->theMap);
-        l0_num++;
-        s->blockRemain--;
-        s->blockUsed++;
-        *theblock = info->l0_block[0];
-        if(*theblock == 0 || *theblock == 1) watchalloc = true;
-        return 0;
+    struct super_block * s = (struct super_block *)block[0];
+    info->st.st_size += BLOCKSIZE;
+    //from the smallest one to the largest one.
+    if(info->l2_addr == 0 && info->l1_offset == 0) {// only the l0
+        if(info->l0_offset == 31) {
+            // allocate an l1_block and update.
+            info->l0_block[31] = getNextEmptyBlock(&s->theMap);
+            info->l1_offset = 1;
+            info->l0_offset = 1;
+            *the_block = getNextEmptyBlock(&s->theMap);
+            ((struct l1_block *)block[info->l0_block[31]])->l0_block[0] = *the_block;
+            if (*the_block < 0 || *the_block > 524288) watchpoint = true;
+            return 0;
+        }
+        else {
+            // allocate an l0_block
+            *the_block = getNextEmptyBlock(&s->theMap);
+            info->l0_block[info->l0_offset] = *the_block;
+            if (*the_block < 0 || *the_block > 524288) watchpoint = true;
+            info->l0_offset++;
+            return 0;
+        }
     }
+    else if(info->l2_addr == 0) { // l0 and l1
+        if(info->l0_offset == 2047) {
+            // allocate a l2_block and update
+            int32_t new_l2 = getNextEmptyBlock(&s->theMap);
+            int32_t new_l1 = getNextEmptyBlock(&s->theMap);
+            int32_t new_l0 = getNextEmptyBlock(&s->theMap);
 
-    int32_t i = 0;
-    int32_t level = 0;
-    int32_t l1_block_addr = 0;
-    int32_t l2_block_addr = 0;
-    while(1) {
-        // search in l0 block;
-        if (level == 0) {
-            cur_block = info->l0_block[++i];
-            if (i == 31 && cur_block == 0) {
-                l1_block_addr = getNextEmptyBlock(&s->theMap);
-                l1_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                info->l0_block[i] = l1_block_addr;
-                int32_t new_block = getNextEmptyBlock(&s->theMap);
-                l0_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                ((struct l1_block *)block[l1_block_addr])->l0_block[0] = new_block;
-                *theblock = new_block;
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-            else if (i != 31 && cur_block == 0) {
-                int32_t new_block = getNextEmptyBlock(&s->theMap);
-                l0_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                info->l0_block[i] = new_block;
-                *theblock = new_block;
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-
-            else if (i == 31 && cur_block != 0)
-                { level++; i = 0; l1_block_addr = cur_block; continue;}
-            else if (i != 31 && cur_block != 0) {
-                continue;
-            }
+            int32_t l1_addr = info->l0_block[31];
+            struct l1_block * l1 = (struct l1_block *)block[l1_addr];
+            l1->l0_block[2047] = new_l2;
+            struct l2_block *l2 = (struct l2_block *)block[new_l2];
+            l2->l1_block[0] = new_l1;
+            struct l1_block *newl1 = (struct l1_block *)block[new_l1];
+            newl1->l0_block[0] = new_l0;
+            info->l2_addr = new_l2;
+            info->l1_offset = 1;
+            info->l0_offset = 1;
+            *the_block = new_l0;
+            if (*the_block < 0 || *the_block > 524288) watchpoint = true;
+            return 0;
         }
-
-        if (level == 1) {
-            cur_block = ((struct l1_block *) block[l1_block_addr])->l0_block[i];
-            i++;
-
-            if (cur_block == 0 && i == 256) {
-                l2_block_addr = getNextEmptyBlock(&s->theMap);
-                l2_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                ((struct l1_block *) block[l1_block_addr])->l0_block[255] = l2_block_addr;
-                int32_t new_l1_block = getNextEmptyBlock(&s->theMap);
-                l1_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                ((struct l2_block *) block[l2_block_addr])->l1_block[0] = new_l1_block;
-                int32_t new_l0_block = getNextEmptyBlock(&s->theMap);
-                l0_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                ((struct l1_block *)block[new_l1_block])->l0_block[0] = new_l0_block;
-                *theblock = new_l0_block;
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-            else if (cur_block == 0 && i != 256) {
-                int32_t new_l0_block = getNextEmptyBlock(&s->theMap);
-                s->blockUsed++;
-                s->blockRemain--;
-                l0_num++;
-                ((struct l1_block *) block[l1_block_addr])->l0_block[i-1] = new_l0_block;
-                *theblock = new_l0_block;
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-            else if (cur_block != 0 && i == 256) {
-                level++;
-                i = 0;
-                l2_block_addr = cur_block;
-                l1_block_addr = ((struct l2_block *)block[cur_block])->l1_block[0];
-                continue;
-            }
-            else if (cur_block != 0 && i != 256) {
-                continue;
-            }
+        else {
+            // allocate a l0_block.
+            getLarge = true;
+            int32_t new_l0 = getNextEmptyBlock(&s->theMap);
+            int32_t l1_addr = info->l0_block[31];
+            struct l1_block * l1 = (struct l1_block *)block[l1_addr];
+            l1->l0_block[info->l0_offset] = new_l0;
+            info->l0_offset++;
+            *the_block = new_l0;
+            if (*the_block < 0 || *the_block > 524288) watchpoint = true;
+            return 0;
         }
+    }
+    else { // from l2
+/*
+        if (info->l1_offset == 2047 && info->l0_offset == 2048) {
+            // allocate a l2_block and update.
+                    getLarge = true;
+            int32_t new_l2 = getNextEmptyBlock(&s->theMap);
+            int32_t new_l1 = getNextEmptyBlock(&s->theMap);
+            int32_t new_l0 = getNextEmptyBlock(&s->theMap);
 
-        if (level == 2) {
-            struct l2_block *l2 = (struct l2_block *)block[cur_block];
-            struct l1_block *l1;
-            int m = 0, n = 0;
-            int flag = 0;
-            for (m = 0; m <= 254 & flag != 1; m++)
-                for(n = 0; n <= 255 & flag != 1; n++) {//optimizable
-                    l1_block_addr = l2->l1_block[m];
-                    if (l1_block_addr == 0) {flag = 1; break;}
-                    l1 = (struct l1_block *)block[l1_block_addr];
-                    cur_block = l1->l0_block[n];
-                    if (cur_block == 0) {flag = 1; break;}
-                }
-            if (l1_block_addr == 0) {
-                l2->l1_block[m - 1] = getNextEmptyBlock(&s->theMap);
-                l1_num++;
-                if(l2->l1_block[m - 1] == 0) watchm = true;
-                s->blockUsed++;
-                s->blockRemain--;
-                int t = l2->l1_block[m - 1];
-                ((struct l1_block *)block[t])->l0_block[0] = getNextEmptyBlock(&s->theMap);
-                l0_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                *theblock = ((struct l1_block *)block[t])->l0_block[0];
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-            else if(l1_block_addr != 0 && cur_block == 0) { // level 3 not full level 2 not full level 1 not full
-                l1->l0_block[n] = getNextEmptyBlock(&s->theMap);
-                l0_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                *theblock = l1->l0_block[n];
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-            else if(l2->l1_block[255] == 0) { // level 3 full
-                l2->l1_block[255] = getNextEmptyBlock(&s->theMap);
-                l2_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                int t2 = l2->l1_block[255];
-                struct l2_block *t_l2 = (struct l2_block *)block[t2];
-                t_l2->l1_block[0] = getNextEmptyBlock(&s->theMap);
-                l1_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                struct l1_block *t_l1 = (struct l1_block *)block[t_l2->l1_block[0]];
-                t_l1->l0_block[0] = getNextEmptyBlock(&s->theMap);
-                l0_num++;
-                s->blockUsed++;
-                s->blockRemain--;
-                *theblock = t_l1->l0_block[0];
-                if(*theblock == 0 || *theblock == 1) watchalloc = true;
-                break;
-            }
-            else {
-                cur_block = l2->l1_block[255];
-                continue;
-            }
+            struct l2_block *l2 = (struct l2_block *)block[info->l2_addr];
+            l2->l1_block[2047] = new_l2;
+            struct l2_block *n_l2 = (struct l2_block *)block[new_l2];
+            n_l2->l1_block[0] = new_l1;
+            struct l1_block *l1 = (struct l1_block *)block[new_l1];
+            l1->l0_block[0] = new_l0;
+            info->l2_addr = new_l2;
+            info->l1_offset = 1;
+            info->l0_offset = 1;
+            *the_block = new_l0;
+            return 0;
+        }*/
+        if (info->l1_offset < 2047 && info->l0_offset == 2048) {
+            // allocate a l1_block and update.
+            int32_t new_l1 = getNextEmptyBlock(&s->theMap);
+            int32_t new_l0 = getNextEmptyBlock(&s->theMap);
+
+            struct l2_block *l2 = (struct l2_block *)block[info->l2_addr];
+            l2->l1_block[info->l1_offset] = new_l1;
+            info->l1_offset++;
+            struct l1_block *l1 = (struct l1_block *)block[new_l1];
+            l1->l0_block[0] = new_l0;
+            info->l0_offset = 1;
+            *the_block = new_l0;
+            if (*the_block < 0 || *the_block > 524288) watchpoint = true;
+            return 0;
+        }
+        else {
+            // allocate a l0_block and update.
+            int32_t new_l0 = getNextEmptyBlock(&s->theMap);
+            struct l2_block *l2 = (struct l2_block *)block[info->l2_addr];
+            int32_t l1_addr = l2->l1_block[info->l1_offset-1];
+            struct l1_block *l1 = (struct l1_block *)block[l1_addr];
+            l1->l0_block[info->l0_offset] = new_l0;
+            info->l0_offset++;
+            *the_block = new_l0;
+            if (*the_block < 0 || *the_block > 524288) watchpoint = true;
+            return 0;
         }
     }
 }
 
-int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset) {
+struct fileinfo * findFile(const char *path) {
+    struct super_block *s = (struct super_block *)block[0];
+    struct fileinfo *file = (struct fileinfo *)block[1];
+
+    int flag = 0;
+    int i = 0;
+    for (i = 0; i < s->numOfFile; i++) {
+        if(strcmp(path + 1, file[i].filename) == 0) {
+            flag = 1;
+            break;
+        }
+    }
+    return (flag == 1) ? &file[i] : NULL;
+}
+
+void releaseBlock(int blockNum) {
+
+    if(blockNum == 0 | blockNum == 1) {
+        printf("are you crazy? release block num = %d\n", blockNum);
+        return;
+    }
+
+    struct super_block *s = (struct super_block *)block[0];
+    int temp = blockNum / 32;
+    int bitOffset = blockNum - 32 * temp;
+    // set that bit to 1
+    s->theMap.map[temp] |= (unsigned int)(1 << (31 - bitOffset));
+    
+    if(blockNum < s->theMap.fristUnused)
+        s->theMap.fristUnused = blockNum;
+    memset(block[blockNum], 0, BLOCKSIZE);
+    return;
+}
+
+void releasel2(int32_t l2_addr, int32_t l1_offset, int32_t l0_offset) {
+
+    if (l0_offset == 2048) {
+        l1_offset += 1;
+        l0_offset = 0;
+    }
+    struct l2_block *l2 = (struct l2_block *)block[l2_addr];
+    for (int i = l1_offset; l2->l1_block[i] != 0 && i < 2048; i++) {
+        struct l1_block *l1 = (struct l1_block *)block[l2->l1_block[i]];
+                
+        for (int j = l0_offset; l1->l0_block[j]!= 0 && j <= 2047; j++) {
+            releaseBlock(l1->l0_block[j]);
+            l1->l0_block[j] = 0;// doubt will it stop the cycle ? 
+        }
+
+        if (l0_offset == 0) {
+            releaseBlock(l2->l1_block[i]);
+            l2->l1_block[i] = 0;
+        }
+
+        l0_offset = 0;
+    }
+}
+
+void releasel1(int32_t l1_addr, int32_t l0_offset) {
+    
+    if (l0_offset == 2047) return;
+    struct l1_block *l1 = (struct l1_block *)block[l1_addr];
+    for (int i = l0_offset; l1->l0_block[i] != 0 && i < 2048; i++) {
+        if (l1->l0_block[i] < 0 || l1->l0_block[i] > 3000) watchpoint = true;
+        releaseBlock(l1->l0_block[i]);
+        l1->l0_block[i] = 0;
+    }
+    if (l0_offset == 0) {
+        releaseBlock(l1_addr);
+    }
+    return;
+}
+
+int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset, struct position *p) {
 
     if(offset >= info->st.st_size) return 0;
 
     off_t l0 = offset / BLOCKSIZE;
     if (l0 <= 30) {
         *byteOffset = offset - l0 * BLOCKSIZE;
+        p->l0 = l0;
+        p->l1 = 0;
+        p->l2 = 0;
         return info->l0_block[l0];
     }
     else {
         int l1 = (offset - BLOCKSIZE * 31) / BLOCKSIZE;
-        if (l1 < BLOCKSIZE / sizeof(int32_t)) {//get help in l1
+        if (l1 < BLOCKSIZE / sizeof(int32_t) - 1) {//get help in l1
             off_t l0_offset = offset - 31 * BLOCKSIZE;
             *byteOffset = l0_offset - l1 * BLOCKSIZE;
             int32_t t1 = info->l0_block[31];
+            int32_t l0 = l1;
             int32_t t2 = ((struct l1_block *)block[t1])->l0_block[l1];
+            p->l0 = l0;
+            p->l1 = 1;
+            p->l2 = 0;
             return t2;
         } else { // time to get help from l2
-            int32_t t1 = info->l0_block[31]; 
-            off_t l2_offset = offset - BLOCKSIZE * (31 + 255);
-            int32_t l2_temp = l2_offset / (255 * 256 * BLOCKSIZE);
+            int32_t t1 = info->l0_block[31];
+            off_t l2_offset = offset - BLOCKSIZE * (31 + 2047);
+            int32_t l2_addr = ((struct l1_block *)block[t1])->l0_block[2047];
             int temp;
-            int32_t target = ((struct l1_block *)block[t1])->l0_block[255];
-            for (temp = 0; temp < l2_temp; temp++) {
-                target = ((struct l2_block *)block[target])->l1_block[255];
-            }// now the result is in block[target]
 
-            off_t l1_offset = l2_offset - (l2_temp * 255 * 256 * BLOCKSIZE);
+            p->l2 = 1;
 
-            off_t l1_temp = l1_offset / (256 * BLOCKSIZE); // which l1_block?
-            int32_t l1_target = ((struct l2_block *)block[target])->l1_block[l1_temp];// locate in block[l1_target]
+            off_t l1_offset = l2_offset;
 
-            off_t l0_offset = l1_offset - (l1_temp * 256 * BLOCKSIZE);
+            off_t l1_temp = l1_offset / (2048 * BLOCKSIZE); // which l1_block?
+            p->l1 = l1_temp;
+            int32_t l1_target = ((struct l2_block *)block[l2_addr])->l1_block[l1_temp];// locate in block[l1_target]
+
+            off_t l0_offset = l1_offset - (l1_temp * 2048 * BLOCKSIZE);
             off_t l0_temp = l0_offset / BLOCKSIZE;
+            p->l0 = l0_temp;
             *byteOffset = l0_offset - l0_temp * BLOCKSIZE;
             int32_t l0_target = ((struct l1_block *)block[l1_target])->l0_block[l0_temp];
-
             return l0_target;
         }
     }
 }
 
-static void* sfs_init(struct fuse_conn_info *conn) {
+void erase(struct fileinfo *info, off_t offset) {
+    // delete all the contents after the offset.
+    if (info->st.st_size < offset) {
+        printf("erase error: offset > size\n");
+        return;
+    }
+    else {
+        struct position p;
+        int32_t byte_offset;
+        int32_t s_block = getNumBlock(offset, info, &byte_offset, &p);
+        memset(block[s_block]+ byte_offset, 0, BLOCKSIZE - byte_offset);
+        if (byte_offset == 0) releaseBlock(s_block);
+        // and the next?
+        struct l2_block *l2 = NULL;
+        struct l1_block *l1 = NULL;
+        
+        if (p.l2 > 0) {
+            l1 = (struct l1_block *)block[info->l0_block[31]];
+            l2 = (struct l2_block *)block[l1->l0_block[2047]];
+            int32_t l2_addr = l1->l0_block[2047];
+            releasel2(l2_addr, p.l1, p.l0 + 1);//doubt p.l0 = 2047
+
+        }
+        else if (p.l2 == 0 && p.l1 == 1) {
+            //releasel1(info->l0_block[31], p.l0 + 1); // doubt.
+            int32_t l1_addr = info->l0_block[31];
+            int32_t l2_addr = ((struct l1_block*)block[l1_addr])->l0_block[2047];
+            if (l2_addr > 1) releasel2(l2_addr, 0, 0);
+            releasel1(info->l0_block[31], p.l0 + 1);
+            return;
+        }
+        else if (p.l2 == 0 && p.l1 == 0) {
+
+            int32_t l1_addr = info->l0_block[31];
+            if (l1_addr > 1) {
+                int32_t l2_addr = ((struct l1_block *)block[l1_addr])->l0_block[2047];
+                if (l2_addr > 1) releasel2(l2_addr, 0, 0);
+                releasel1(l1_addr, 0);
+                info->l0_block[31] = 0;
+            }
+
+            for (int i = p.l0 + 1; i <= 30 && info->l0_block[i] != 0; i++) {
+                releaseBlock(info->l0_block[i]);
+                info->l0_block[i] = 0;
+            }
+            
+        }
+
+        info->st.st_size = offset;
+        info->l2_addr = p.l2;
+        info->l1_offset = p.l1;
+        info->l0_offset = p.l0;
+    }
+}
+
+void extend(struct fileinfo *info, off_t offset) {
+    int32_t temp = info->st.st_size;
+    if (info->st.st_size > offset) {
+        printf("extend error: offset = %d while size = %d, offset < size\n", offset, info->st.st_size);
+        return;
+    }
+    else {
+        while (info->st.st_size < offset) {
+            int the_block;
+            newAlloBlock(info, &the_block);
+            if(the_block == 0){
+                printf("no more space , quit\n");
+                info->st.st_size = temp;
+                return;
+            }
+        }//while
+        info->st.st_size = offset;
+    }
+}
+
+void* sfs_init(struct fuse_conn_info *conn) {
     printf("call init\n");
    int blockSize = 8 * 1024;
    int blockNum = 512 * 1024; // the number of blocks
@@ -335,13 +435,11 @@ static void* sfs_init(struct fuse_conn_info *conn) {
    memset(S->theMap.map, -1, sizeof(S->theMap.map)); //doubt.
 
    void *m = block[0];
-    //printf("%d, %d, %d, %d\n", ((struct super_block *)m)->blockUsed, ((struct super_block *)m)->blockRemain, 
-    //((struct super_block *)m)->numOfFile, ((struct super_block *)m)->theMap.map[0]);
    
    return NULL;
 }
 
-static int sfs_getattr(const char *path, struct stat *st) {
+int sfs_getattr(const char *path, struct stat *st) {
     
     printf("call getattr, path = %s\n", path);
     
@@ -371,7 +469,7 @@ static int sfs_getattr(const char *path, struct stat *st) {
     return 0;
 }
 
-static int sfs_readdir(const char *path, void *buffer, 
+int sfs_readdir(const char *path, void *buffer, 
     fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *info) {
 
     printf("call readdir, path=%s, offset=%d\n", path, offset);
@@ -389,31 +487,12 @@ static int sfs_readdir(const char *path, void *buffer,
     return 0;
 }
 
-static int sfs_open(const char *path, struct fuse_file_info *info) {
+int sfs_open(const char *path, struct fuse_file_info *info) {
     printf("call open, flags = %o\n", info->flags);
     return 0;
 }
 
-static void releaseBlock(int blockNum) {
-
-    if(blockNum == 0 | blockNum == 1) {
-        printf("are you crazy? release block num = %d\n", blockNum);
-        return;
-    }
-
-    struct super_block *s = (struct super_block *)block[0];
-    int temp = blockNum / 32;
-    int bitOffset = 32 - 32 * temp;
-    // set that bit to 1
-    s->theMap.map[temp] |= (unsigned int)(1 << bitOffset);
-    
-    if(blockNum < s->theMap.fristUnused)
-        s->theMap.fristUnused = blockNum;
-    memset(block[blockNum], 0, BLOCKSIZE);
-    return;
-}
-
-static int sfs_truncate(const char *path, off_t offset) {
+int sfs_truncate(const char *path, off_t offset) {
     printf("call truncate, path=%s, offset=%d", path, offset);
     struct super_block *s = (struct super_block *)block[0];
     struct fileinfo *fi = (struct fileinfo *)block[1];
@@ -424,87 +503,39 @@ static int sfs_truncate(const char *path, off_t offset) {
         if(strcmp(fi[i].filename, path+1) == 0) {flag = 1; break;}
     }
     if (flag == 1) {
-        // delete the file?
-        fi[i].st.st_size = offset;
+        struct fileinfo *s = &fi[i];
+        if(s->st.st_size > offset) erase(s, offset);
+        else extend(s, offset);
+        return 0;
     }
-    return 0;
+    else return -ENOENT;
 }
 
-static int sfs_chmod(const char *path, mode_t mode, struct fileinfo *info) {
-    return 0;
-}
-
-static int sfs_chown(const char *path, uid_t uid, gid_t gid, struct fileinfo *info) {
-    return 0;
-}
-
-static int sfs_unlink(const char *path) {
+int sfs_unlink(const char *path) {
     printf("call unlink, path = %s\n", path);
     char *name = (char *)(path + 1);
     struct fileinfo *theFile = (struct fileinfo *)block[1];
 
     struct super_block *s = (struct super_block *)block[0];
-
+    int flag = 0;
     int i = 0;
     for (i = 0; i < s->numOfFile; i++) {
-        if (strcmp(theFile[i].filename, name) == 0) break;
+        if (strcmp(theFile[i].filename, name) == 0) {flag = 1; break;}
     }
 
-    int stop = 0;
-    // now release the block, move the array up.
-    // release l0;
-    for (int j = 0; j < 31; j++) {
-        if(theFile[i].l0_block[j] == 0){ stop = 1; break;}
-        else {
-            releaseBlock(theFile[i].l0_block[j]);
+    if (flag == 1) {
+        sfs_truncate(path, 0);
+        for(int l = i; l < s->numOfFile; l++) {
+            memcpy(&theFile[l], &theFile[l+1], sizeof(struct fileinfo));
         }
-    }
-    if (stop != 1) { // release l1
-        int32_t l1_block_num = theFile[i].l0_block[31];
-        if (l1_block_num == 0) stop = 1;
-        else { // release l1
-            struct l1_block *l1 = (struct l1_block *)block[l1_block_num];
-            for (int32_t j = 0; j < 255; j++) {
-                if(l1->l0_block[j] == 0) { stop = 1; break;}
-                else releaseBlock(l1->l0_block[j]);
-            }
-        }
-    }
-    if (stop != 1) {
-        int32_t l1_block_num = theFile[i].l0_block[31];
-        int32_t l2_block_num = ((struct l1_block *)block[l1_block_num])->l0_block[255];
-        struct l2_block *l2_temp = (struct l2_block *)block[l2_block_num];
-        while(stop != 1) { // release l2
-            int32_t m = 0;
-            int32_t n = 0;
-
-            for (m = 0; m <= 254 & stop != 1; m++) {
-                int32_t l1_num = l2_temp->l1_block[m];
-                struct l1_block *l1_temp = (struct l1_block *)block[l1_num];
-                for (n = 0; n <= 255; n++) {
-                    if(l1_temp->l0_block[n] == 0) {stop = 1; break;}
-                    else releaseBlock(l1_temp->l0_block[n]);
-                }
-            }
-
-            if (l2_temp->l1_block[255] == 0) {stop = 1; break;}
-            else 
-                l2_block_num = l2_temp->l1_block[255];
-        }
+        s->numOfFile--;
+        return 0;
     }
 
-    // now release the fileinfo.
-
-    for(int l = i; l < s->numOfFile - 1; l++) {
-        memcpy(&theFile[l], &theFile[l+1], sizeof(struct fileinfo));
-    }
-
-    s->numOfFile--;
-
-    return 0;
+    else return -ENOENT;
 }
 
-static void mkFileInfo(const char *filename, struct stat *thestat) {
+void mkFileInfo(const char *filename, struct stat *thestat) {
 
     struct super_block *s = (struct super_block *)block[0];
 
@@ -517,7 +548,17 @@ static void mkFileInfo(const char *filename, struct stat *thestat) {
     return;
 }
 
-static int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
+int sfs_utimens(const char *path, const struct timespec tv[2]) {
+    struct fileinfo * file = findFile(path);
+    if (file == NULL) return -ENOENT;
+    else {
+        file->st.st_atime = tv[0].tv_sec;
+        file->st.st_mtime = tv[1].tv_sec;
+        return 0;
+    }
+}
+
+int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
     printf("mknod, path = %s\n, mode = %o", path, mode);
     struct stat st;
     st.st_mode = __S_IFREG | 0666;
@@ -529,11 +570,10 @@ static int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
     st.st_mtime = time(NULL);
     st.st_ctime = time(NULL);
     mkFileInfo(path + 1, &st);
-
     return 0;
 }
 
-static int sfs_read(const char *path, char *buffer, size_t size, off_t offset, 
+int sfs_read(const char *path, char *buffer, size_t size, off_t offset, 
                     struct fuse_file_info *info) {
     //return the number of bytes it has read.
     //
@@ -551,44 +591,50 @@ static int sfs_read(const char *path, char *buffer, size_t size, off_t offset,
         return 0;
     } else {
         printf("I have found the file, and it says:\n");
+        struct position p;
 
-        if(offset > s[i].st.st_size || s[i].st.st_size == 0) return 0;
+        if(offset >= s[i].st.st_size || s[i].st.st_size == 0) return 0;
 
         int32_t byteOffset;
-        int start = getNumBlock(offset, &s[i], &byteOffset);
+        int start = getNumBlock(offset, &s[i], &byteOffset, &p);
         int byteRead = 0;
-        for (int i = 0; byteRead < size; i++) {
-            if(byteRead + BLOCKSIZE - byteOffset > size){
-                if(offset + byteRead + size > s[i].st.st_size) {
-                    memcpy(buffer, (void *)((char *)block[start] + byteOffset), s[i].st.st_size - (byteRead + offset));
+        int sizeRemain = size;
+        for (int j = 0; byteRead < size; j++) {
+            if(byteRead + BLOCKSIZE - byteOffset >= size){ // we can read less than one block.
+                if(offset + byteRead + sizeRemain > s[i].st.st_size) {// the byte to read is more than the file size, so we just read to the end of the file.
+                    memcpy(buffer + byteRead, (void *)((char *)block[start] + byteOffset), s[i].st.st_size - (byteRead + offset));
                     byteRead += s[i].st.st_size - (byteRead + offset);
+                    sizeRemain = size - byteRead;
                     return byteRead;
                 }
-                else {
-                    memcpy(buffer,(void *) ((char *)block[start]+byteOffset), size);
-                    byteRead += size;
+                else {// the byte to read is less than the file size.
+                    memcpy(buffer + byteRead,(void *) ((char *)block[start]+byteOffset), sizeRemain);
+                    byteRead += sizeRemain;
+                    sizeRemain = size - byteRead;
+                    return byteRead;
                 }
             }
-            else{
-                if(byteRead + BLOCKSIZE - byteOffset + offset > s[i].st.st_size) {
+            else{ // we must read the whole block and go on.
+                if(byteRead + BLOCKSIZE - byteOffset + offset > s[i].st.st_size) { // the byte to read is more than the file size, read to the end and return.
                     if(offset > s[i].st.st_size || s[i].st.st_size == 0) return 0;
-                    memcpy(buffer,(void *) ((char *)block[start]+byteOffset), s[i].st.st_size - (offset + byteRead));
+                    memcpy(buffer + byteRead,(void *) ((char *)block[start]+byteOffset), s[i].st.st_size - (offset + byteRead));
                     byteRead += s[i].st.st_size - (offset + byteRead);
                     return byteRead;
                 }
-                else {
-                    memcpy(buffer,(void *) ((char *)block[start]+byteOffset), BLOCKSIZE - byteOffset);
+                else { // the byte to read is less than the file size, read the whole block and go on.
+                    memcpy(buffer + byteRead,(void *) ((char *)block[start]+byteOffset), BLOCKSIZE - byteOffset);
                     byteRead += BLOCKSIZE - byteOffset;
+                    sizeRemain = size - byteRead;
                 }
             }
-            start = getNumBlock(offset + byteRead, &s[i], &byteOffset);
+            start = getNumBlock(offset + byteRead, &s[i], &byteOffset, &p);
         }
         printf("%d bytes read by me\n", byteRead);
         return byteRead;
     }
 }
 
-static int sfs_write(const char *path, const char *src, size_t size, off_t offset, 
+int sfs_write(const char *path, const char *src, size_t size, off_t offset, 
                     struct fuse_file_info *info)
 {
     // let's assume that path is root.
@@ -610,12 +656,15 @@ static int sfs_write(const char *path, const char *src, size_t size, off_t offse
         return 0;
     } else {// I've found it ! I've found it !!
         int32_t byteOffset = 0;
-        int32_t start = getNumBlock(offset, &s[i], &byteOffset);
+        struct position p;
+        int32_t start = getNumBlock(offset, &s[i], &byteOffset, &p);
+        if (start < 0 || start > 524288) watchpoint = true;
+        if (byteOffset > 0) watchbyte = true;
         int64_t byteWrote = 0;
-        for (int i = 0; byteWrote < size; i++) {
+        for (int j = 0; byteWrote < size; j++) {
             if (size < 8*1024 - byteOffset) {// can write in a block.
                 if (start == 0) {//new block
-                    alloBlock(&s[i], &start);
+                    newAlloBlock(&s[i], &start);
                 }
                 
                 if(start == 0 || start == 1) watchpoint = true;
@@ -627,7 +676,7 @@ static int sfs_write(const char *path, const char *src, size_t size, off_t offse
             }
             else { // just fill a block and go on.
                 if (start == 0) {//new file or more size.
-                    alloBlock(&s[i], &start);
+                    newAlloBlock(&s[i], &start);
                 }
 
                 if(start == 0 || start == 1) watchpoint = true;
@@ -636,13 +685,13 @@ static int sfs_write(const char *path, const char *src, size_t size, off_t offse
                 (void *)((char *)src + byteWrote), 8*1024 - byteOffset);
                 byteWrote += 8*1024 - byteOffset;
                 offset += 8*1024 - byteOffset;
-                start = getNumBlock(offset, &s[i], &byteOffset);
+                start = getNumBlock(offset, &s[i], &byteOffset, &p);
+                if (start < 0 || start > 524288) watchpoint = true;
             }
-        }
-
+        }/*
         if (toffset + size > s[i].st.st_size) {
             s[i].st.st_size = toffset + size;
-        }
+        }*/
         printf("wrote %d bytes to the file.\n", byteWrote);
         return byteWrote;
     }
@@ -657,8 +706,9 @@ static const struct fuse_operations op = {
     .mknod = sfs_mknod,
     .read = sfs_read,
     .write = sfs_write,
-    .truncate = sfs_truncate
-}; 
+    .truncate = sfs_truncate,
+    .utimens = sfs_utimens
+};
 
 int main(int argc, char *argv[]) {
     return fuse_main(argc, argv, &op, NULL);
