@@ -31,4 +31,4 @@ sfs_write.o : sfs_write.c types.h
 main.o : main.c types.h
 	cc -c main.c $(FLAGS)
 clean :
-	rm sfs $(objects)
+	rm $(objects)

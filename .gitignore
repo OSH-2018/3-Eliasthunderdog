@@ -15,7 +15,6 @@ testhuge
 mountpoint/*
 done/*
 newAlloBlock.o
-sfs
 sfs_getattr.o
 sfs_init.o
 sfs_mknod.o
