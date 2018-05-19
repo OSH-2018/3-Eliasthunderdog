@@ -21,7 +21,8 @@ void* sfs_init(struct fuse_conn_info *conn) {
    struct fileinfo *root = (struct fileinfo *)block[1];
    root->type = DIR;
    root->filename[0] = '/';
-   root->st.st_mode = __S_IFDIR | 0666; // there are no limitation except for execution of directory.
+   root->st.st_mode = __S_IFDIR | 0755; // there are no limitation except for execution of directory.
+   root->st.st_nlink = 2;
    root->st.st_ctime = time(NULL);
    root->st.st_atime = time(NULL);
    root->st.st_mtime = time(NULL);

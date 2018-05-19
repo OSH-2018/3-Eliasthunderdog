@@ -69,6 +69,8 @@ int sfs_mkdir(const char *path, mode_t mode);
 struct fileinfo * getfile(const char *path, struct fileinfo **parent);
 struct fileinfo * findCurDir(struct fileinfo *info, const char *name);
 int sfs_opendir(const char *path, struct fuse_file_info * info);
+int sfs_rmdir(const char *path);
+int isempty(struct fileinfo *info);
 
 extern const size_t BLOCKSIZE;
 extern const size_t SIZE;

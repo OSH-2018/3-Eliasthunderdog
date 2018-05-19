@@ -1,5 +1,5 @@
 objects = main.o getNumBlock.o newAlloBlock.o sfs_getattr.o sfs_init.o sfs_mknod.o sfs_open.o sfs_read.o \
-	sfs_readdir.o sfs_truncate.o sfs_unlink.o sfs_utimens.o sfs_write.o sfs_mkdir.o sfs_opendir.o
+	sfs_readdir.o sfs_truncate.o sfs_unlink.o sfs_utimens.o sfs_write.o sfs_mkdir.o sfs_opendir.o sfs_rmdir.o
 FLAGS = -D_FILE_OFFSET_BITS=64 `pkg-config fuse --cflags --libs` -g
 
 sfs : $(objects)
@@ -32,6 +32,8 @@ sfs_mkdir.o : sfs_mkdir.c types.h
 	cc -c sfs_mkdir.c $(FLAGS)
 sfs_opendir.o : sfs_opendir.c types.h
 	cc -c sfs_opendir.c $(FLAGS)
+sfs_rmdir.o : sfs_rmdir.c types.h
+	cc -c sfs_rmdir.c $(FLAGS)
 main.o : main.c types.h
 	cc -c main.c $(FLAGS)
 clean :

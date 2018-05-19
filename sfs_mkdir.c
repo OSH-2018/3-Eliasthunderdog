@@ -60,6 +60,7 @@ int sfs_mkdir(const char* path, mode_t mode) {
     ; // find an empty space.
 
     t = &f[i];
+    t->type = DIR;
     char *names1 = strrchr(path, '/');
 
     strcpy(t->filename, names1 + 1);

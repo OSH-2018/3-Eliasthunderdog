@@ -31,7 +31,8 @@ static const struct fuse_operations op = {
     .truncate = sfs_truncate,
     .utimens = sfs_utimens,
     .mkdir = sfs_mkdir,
-    .opendir = sfs_opendir
+    .opendir = sfs_opendir,
+    .rmdir = sfs_rmdir
 };
 
 int main(int argc, char *argv[]) {
