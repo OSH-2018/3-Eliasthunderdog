@@ -19,21 +19,6 @@ const size_t size = SIZE;
 const unsigned int blockSize = BLOCKSIZE; // a block is 8k in size.
 void *block[4096*128];
 
-struct fileinfo * findFile(const char *path) {
-    struct super_block *s = (struct super_block *)block[0];
-    struct fileinfo *file = (struct fileinfo *)block[1];
-
-    int flag = 0;
-    int i = 0;
-    for (i = 0; i < s->numOfFile; i++) {
-        if(strcmp(path + 1, file[i].filename) == 0) {
-            flag = 1;
-            break;
-        }
-    }
-    return (flag == 1) ? &file[i] : NULL;
-}
-
 static const struct fuse_operations op = {
     .init = sfs_init,
     .getattr = sfs_getattr,
@@ -44,7 +29,9 @@ static const struct fuse_operations op = {
     .read = sfs_read,
     .write = sfs_write,
     .truncate = sfs_truncate,
-    .utimens = sfs_utimens
+    .utimens = sfs_utimens,
+    .mkdir = sfs_mkdir,
+    .opendir = sfs_opendir
 };
 
 int main(int argc, char *argv[]) {

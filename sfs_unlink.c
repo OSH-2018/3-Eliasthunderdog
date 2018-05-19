@@ -5,22 +5,28 @@
 
 int sfs_unlink(const char *path) {
     printf("call unlink, path = %s\n", path);
-    char *name = (char *)(path + 1);
-    struct fileinfo *theFile = (struct fileinfo *)block[1];
 
     struct super_block *s = (struct super_block *)block[0];
-    int flag = 0;
-    int i = 0;
-    for (i = 0; i < s->numOfFile; i++) {
-        if (strcmp(theFile[i].filename, name) == 0) {flag = 1; break;}
-    }
+    struct fileinfo *f = (struct fileinfo *)block[1];
 
-    if (flag == 1) {
-        sfs_truncate(path, 0);
-        for(int l = i; l < s->numOfFile; l++) {
-            memcpy(&theFile[l], &theFile[l+1], sizeof(struct fileinfo));
-        }
+    struct fileinfo *t;
+    struct fileinfo *p;
+
+    t = getfile(path, &p);
+
+    if (t != NULL) {
+        erase(t, 0);
+        
         s->numOfFile--;
+        int i;
+        for (i = 0; i < 32; i++) {
+            int m = p->l0_block[i];
+            if (strcmp(t->filename, f[m].filename) == 0) {
+                p->l0_block[i] = 0;
+                break;
+            }
+        }
+        memset(t, 0, sizeof(struct fileinfo));
         return 0;
     }
 

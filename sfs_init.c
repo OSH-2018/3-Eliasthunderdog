@@ -2,6 +2,8 @@
 #include <sys/mman.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 void* sfs_init(struct fuse_conn_info *conn) {
     printf("call init\n");
@@ -16,9 +18,15 @@ void* sfs_init(struct fuse_conn_info *conn) {
    S->blockUsed = 2;
    S->blockRemain = blockNum - 2;
    S->theMap.fristUnused = 2;
-
-   S->theMap.map[0] &= 0x3fffffff;
+   struct fileinfo *root = (struct fileinfo *)block[1];
+   root->type = DIR;
+   root->filename[0] = '/';
+   root->st.st_mode = __S_IFDIR | 0666; // there are no limitation except for execution of directory.
+   root->st.st_ctime = time(NULL);
+   root->st.st_atime = time(NULL);
+   root->st.st_mtime = time(NULL);
 
    memset(S->theMap.map, -1, sizeof(S->theMap.map)); //doubt.
+   S->theMap.map[0] &= 0x3fffffff;
    return NULL;
 }

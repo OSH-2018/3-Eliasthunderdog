@@ -8,16 +8,15 @@ int sfs_truncate(const char *path, off_t offset) {
     printf("call truncate, path=%s, offset=%d", path, offset);
     struct super_block *s = (struct super_block *)block[0];
     struct fileinfo *fi = (struct fileinfo *)block[1];
-    int i = 0;
-    int flag = 0;
-    int32_t byteOffset = 0;
-    for (i = 0; i < s->numOfFile; i++) {
-        if(strcmp(fi[i].filename, path+1) == 0) {flag = 1; break;}
-    }
-    if (flag == 1) {
-        struct fileinfo *s = &fi[i];
-        if(s->st.st_size > offset) erase(s, offset);
-        else extend(s, offset);
+
+    struct fileinfo *t;
+    struct fileinfo *p;
+
+    t = getfile(path, &p);
+
+    if (t != NULL) {
+        if(t->st.st_size > offset) erase(t, offset);
+        else extend(t, offset);
         return 0;
     }
     else return -ENOENT;
