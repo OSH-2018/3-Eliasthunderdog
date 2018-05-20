@@ -1,5 +1,6 @@
 #include "types.h"
 #include <string.h>
+#include <errno.h>
 
 struct fileinfo * getfile(const char *path, struct fileinfo **parent) {//super fucking important
     
@@ -52,6 +53,8 @@ int sfs_mkdir(const char* path, mode_t mode) {
 
     t = getfile(path, &p);
 
+    if (t != NULL) return -EEXIST;
+
     struct super_block *s = (struct super_block *)block[0];
     struct fileinfo *f = (struct fileinfo *)block[1];
 
@@ -71,7 +74,7 @@ int sfs_mkdir(const char* path, mode_t mode) {
     t->st.st_mtime = time(NULL);
     t->st.st_uid = fuse_get_context()->uid;
     t->st.st_gid = fuse_get_context()->gid;
-    t->st.st_size = 8*1024; // doubt.
+    t->st.st_size = 4*1024; // doubt.
     t->st.st_nlink = 2;
     s->numOfFile++;
 
@@ -81,5 +84,6 @@ int sfs_mkdir(const char* path, mode_t mode) {
     ;
 
     p->l0_block[j] = i;
+    p->st.st_nlink++;
     return 0;
 };

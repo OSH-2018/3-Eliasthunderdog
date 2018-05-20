@@ -8,8 +8,8 @@ int sfs_getattr(const char *path, struct stat *st) {
     
     if(strcmp(path, "/") == 0) {
         printf("It's root !\n");
-        st->st_mode = __S_IFDIR | 0755;
-        st->st_nlink = 2; // the root directory has 2 hard links
+        struct fileinfo *root = (struct fileinfo *)block[1];
+        memcpy(st, &(root->st), sizeof(struct stat));
     } else {
         printf("called else, path=%s\n", path);
         

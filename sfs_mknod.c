@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <fuse.h>
+#include <errno.h>
 
 void mkFileInfo(const char *filename, struct fileinfo *parent, struct stat *thestat) {
 
@@ -46,6 +47,10 @@ int sfs_mknod(const char *path, mode_t mode, dev_t dev) {
     struct fileinfo *p;
 
     t = getfile(path, &p);
+
+    if (t != NULL) {//file exists
+        return -EEXIST;
+    }
 
     char *names1 = strrchr(path, '/');
 

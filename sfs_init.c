@@ -22,10 +22,13 @@ void* sfs_init(struct fuse_conn_info *conn) {
    root->type = DIR;
    root->filename[0] = '/';
    root->st.st_mode = __S_IFDIR | 0755; // there are no limitation except for execution of directory.
+   root->st.st_uid = fuse_get_context()->uid;
+   root->st.st_gid = fuse_get_context()->gid;
    root->st.st_nlink = 2;
    root->st.st_ctime = time(NULL);
    root->st.st_atime = time(NULL);
    root->st.st_mtime = time(NULL);
+   root->st.st_size = 4 * 1024;
 
    memset(S->theMap.map, -1, sizeof(S->theMap.map)); //doubt.
    S->theMap.map[0] &= 0x3fffffff;
