@@ -43,7 +43,11 @@ void erase(struct fileinfo *info, off_t offset) {
             l2 = (struct l2_block *)block[l1->l0_block[2047]];
             int32_t l2_addr = l1->l0_block[2047];
             releasel2(l2_addr, p.l1, p.l0 + 1);//doubt p.l0 = 2047
-
+            info->st.st_size = offset;
+            info->l2_addr = p.l2;
+            info->l1_offset = p.l1;
+            info->l0_offset = p.l0;
+            return;
         }
         else if (p.l2 == 0 && p.l1 == 1) {
             //releasel1(info->l0_block[31], p.l0 + 1); // doubt.
@@ -51,6 +55,10 @@ void erase(struct fileinfo *info, off_t offset) {
             int32_t l2_addr = ((struct l1_block*)block[l1_addr])->l0_block[2047];
             if (l2_addr > 1) releasel2(l2_addr, 0, 0);
             releasel1(info->l0_block[31], p.l0 + 1);
+            info->st.st_size = offset;
+            info->l2_addr = p.l2;
+            info->l1_offset = p.l1;
+            info->l0_offset = p.l0;
             return;
         }
         else if (p.l2 == 0 && p.l1 == 0) {
@@ -60,20 +68,19 @@ void erase(struct fileinfo *info, off_t offset) {
                 int32_t l2_addr = ((struct l1_block *)block[l1_addr])->l0_block[2047];
                 if (l2_addr > 1) releasel2(l2_addr, 0, 0);
                 releasel1(l1_addr, 0);
-                info->l0_block[31] = 0;
             }
 
             for (int i = p.l0 + 1; i <= 30 && info->l0_block[i] != 0; i++) {
                 releaseBlock(info->l0_block[i]);
                 info->l0_block[i] = 0;
             }
-            
-        }
 
-        info->st.st_size = offset;
-        info->l2_addr = p.l2;
-        info->l1_offset = p.l1;
-        info->l0_offset = p.l0;
+            info->l0_block[31] = 0;
+            info->st.st_size = offset;
+            info->l2_addr = p.l2;
+            info->l1_offset = p.l1;
+            info->l0_offset = p.l0;
+        }
     }
 }
 
