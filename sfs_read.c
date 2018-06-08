@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
-int sfs_read(const char *path, char *buffer, size_t size, off_t offset, 
+int sfs_read(const char *path, char *buffer, size_t size, off_t offset,
                     struct fuse_file_info *info) {
     //return the number of bytes it has read.
     //
@@ -10,7 +10,7 @@ int sfs_read(const char *path, char *buffer, size_t size, off_t offset,
     printf("call read, path=%s, size=%d, offset=%d\n", path, size, offset);
     struct super_block *S = (struct super_block *)block[0];
     struct fileinfo *s = (struct fileinfo *)block[1];
-    
+
     struct fileinfo *t;
     struct fileinfo *p;
 
@@ -29,7 +29,7 @@ int sfs_read(const char *path, char *buffer, size_t size, off_t offset,
         int start = getNumBlock(offset, t, &byteOffset, &p);
         int byteRead = 0;
         int sizeRemain = size;
-        for (int j = 0; byteRead < size; j++) {
+        while (byteRead < size) {
             if(byteRead + BLOCKSIZE - byteOffset >= size){ // we can read less than one block.
                 if(offset + byteRead + sizeRemain > t->st.st_size) {// the byte to read is more than the file size, so we just read to the end of the file.
                     memcpy(buffer + byteRead, (void *)((char *)block[start] + byteOffset), t->st.st_size - (byteRead + offset));

@@ -1,9 +1,10 @@
-#include "types.h"
+# include "types.h"
 int32_t getNumBlock(off_t offset, struct fileinfo *info, int32_t *byteOffset, struct position *p) {
 
-    if(offset >= info->st.st_size) return 0;
+    if(offset > info->st.st_size || offset < 0) return 0;
 
     off_t l0 = offset / BLOCKSIZE;
+
     if (l0 <= 30) {
         *byteOffset = offset - l0 * BLOCKSIZE;
         p->l0 = l0;

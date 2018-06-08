@@ -37,7 +37,7 @@ void erase(struct fileinfo *info, off_t offset) {
         // and the next?
         struct l2_block *l2 = NULL;
         struct l1_block *l1 = NULL;
-        
+
         if (p.l2 > 0) {
             l1 = (struct l1_block *)block[info->l0_block[31]];
             l2 = (struct l2_block *)block[l1->l0_block[2047]];
@@ -46,7 +46,8 @@ void erase(struct fileinfo *info, off_t offset) {
             info->st.st_size = offset;
             info->l2_addr = p.l2;
             info->l1_offset = p.l1;
-            info->l0_offset = p.l0;
+            if(byte_offset == 0) info->l0_offset = p.l0;
+            else info->l0_offset = p.l0 + 1;
             return;
         }
         else if (p.l2 == 0 && p.l1 == 1) {
@@ -58,7 +59,8 @@ void erase(struct fileinfo *info, off_t offset) {
             info->st.st_size = offset;
             info->l2_addr = p.l2;
             info->l1_offset = p.l1;
-            info->l0_offset = p.l0;
+            if(byte_offset == 0) info->l0_offset = p.l0;
+            else info->l0_offset = p.l0 + 1;
             return;
         }
         else if (p.l2 == 0 && p.l1 == 0) {
@@ -79,7 +81,8 @@ void erase(struct fileinfo *info, off_t offset) {
             info->st.st_size = offset;
             info->l2_addr = p.l2;
             info->l1_offset = p.l1;
-            info->l0_offset = p.l0;
+            if(byte_offset == 0) info->l0_offset = p.l0;
+            else info->l0_offset = p.l0 + 1;
         }
     }
 }
@@ -91,6 +94,14 @@ void extend(struct fileinfo *info, off_t offset) {
         return;
     }
     else {
+        struct position p;
+        int byteOffset = 0;
+        int t = getNumBlock(info->st.st_size - 1, info, &byteOffset, &p);
+        int temp = 0;
+
+        if(t == 0)  newAlloBlock(info, &temp); // new file.
+        else info->st.st_size += 8 * 1024 - byteOffset;
+
         while (info->st.st_size < offset) {
             int the_block;
             newAlloBlock(info, &the_block);
@@ -118,7 +129,7 @@ void releaseBlock(int blockNum) {
     int bitOffset = blockNum - 32 * temp;
     // set that bit to 1
     s->theMap.map[temp] |= (unsigned int)(1 << (31 - bitOffset));
-    
+
     if(blockNum < s->theMap.fristUnused)
         s->theMap.fristUnused = blockNum;
     return;
@@ -133,10 +144,10 @@ void releasel2(int32_t l2_addr, int32_t l1_offset, int32_t l0_offset) {
     struct l2_block *l2 = (struct l2_block *)block[l2_addr];
     for (int i = l1_offset; l2->l1_block[i] != 0 && i < 2048; i++) {
         struct l1_block *l1 = (struct l1_block *)block[l2->l1_block[i]];
-                
+
         for (int j = l0_offset; l1->l0_block[j]!= 0 && j <= 2047; j++) {
             releaseBlock(l1->l0_block[j]);
-            l1->l0_block[j] = 0;// doubt will it stop the cycle ? 
+            l1->l0_block[j] = 0;// doubt will it stop the cycle ?
         }
 
         if (l0_offset == 0) {
@@ -149,7 +160,7 @@ void releasel2(int32_t l2_addr, int32_t l1_offset, int32_t l0_offset) {
 }
 
 void releasel1(int32_t l1_addr, int32_t l0_offset) {
-    
+
     if (l0_offset == 2047) return;
     struct l1_block *l1 = (struct l1_block *)block[l1_addr];
     for (int i = l0_offset; l1->l0_block[i] != 0 && i < 2048; i++) {

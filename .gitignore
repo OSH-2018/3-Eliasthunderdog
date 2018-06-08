@@ -29,3 +29,4 @@ getNumBlock.o
 main.o
 sfs_mkdir.o
 sfs_opendir.o
+fs_test/*

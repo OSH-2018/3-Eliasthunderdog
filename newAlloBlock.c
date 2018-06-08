@@ -1,20 +1,21 @@
 #include "types.h"
 #include <stdbool.h>
 #include <sys/mman.h>
+#include <string.h>
 
 int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
 
     int temp = theBlockBitmap->fristUnused;
     int intoffset = temp / 32;
     int bitOffset = temp - 32 * intoffset;
-    theBlockBitmap->map[intoffset] &= ~(1 << (31 - bitOffset)); // set the bit to zero. 
+    theBlockBitmap->map[intoffset] &= ~(1 << (31 - bitOffset)); // set the bit to zero.
     int i;
     for (i = temp + 1; i < SIZE/BLOCKSIZE; i++) {
         intoffset = i / 32;
         bitOffset = i - 32 * intoffset;
-        
+
         bool m = ((unsigned int)(theBlockBitmap->map[intoffset] & (unsigned int) (1 << (31 - bitOffset))) != 0);
-        
+
         if (m) {
             theBlockBitmap->fristUnused = i;
             break;
@@ -25,13 +26,14 @@ int32_t getNextEmptyBlock(struct blockBitmap* theBlockBitmap) {
         return 0; //indicate that all blocks are used.
     }
     block[temp] = mmap(NULL, sizeof(struct super_block), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    memset(block[temp], 0, 8 * 1024);
     return temp;
 }
 
 int32_t newAlloBlock(struct fileinfo *info, int32_t *the_block) {
 
     struct super_block * s = (struct super_block *)block[0];
-    info->st.st_size += BLOCKSIZE;
+    info->st.st_size += 8 * 1024;
     //from the smallest one to the largest one.
     if(info->l2_addr == 0 && info->l1_offset == 0) {// only the l0
         if(info->l0_offset == 31) {
